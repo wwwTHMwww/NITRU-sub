@@ -12,6 +12,8 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
     
     - name: Set up Python
       uses: actions/setup-python@v5
@@ -20,22 +22,17 @@ jobs:
     
     - name: Install dependencies
       run: |
+        python -m pip install --upgrade pip
         pip install requests
     
     - name: Run update script
       run: python update.py
     
-    - name: Upload sub.txt as artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: subscription
-        path: sub.txt
-        retention-days: 7
-    
-    - name: Update release
-      uses: softprops/action-gh-release@v1
-      with:
-        tag_name: latest
-        files: sub.txt
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Commit and push changes
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        git add sub.txt
+        git status
+        git commit -m "Auto update subscription $(date '+%Y-%m-%d %H:%M:%S')" || echo "No changes to commit"
+        git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git HEAD:main
