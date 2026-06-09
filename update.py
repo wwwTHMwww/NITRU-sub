@@ -1,130 +1,212 @@
+#!/usr/bin/env python3
 import requests
 import base64
 import re
 import random
+import json
 from datetime import datetime
+import time
 import os
+
+try:
+    from config import *
+except ImportError:
+    print("❌ config.py پیدا نشد!")
+    exit(1)
+
+try:
+    from telegram import send_telegram_message, send_file_to_telegram
+except ImportError:
+    def send_telegram_message(msg): return False
+    def send_file_to_telegram(file, cap): return False
 
 # رنگ‌ها برای ترمینال
 GREEN = "\033[92m"
 YELLOW = "\033[93m"
 RED = "\033[91m"
+BLUE = "\033[94m"
+CYAN = "\033[96m"
 RESET = "\033[0m"
 
-# منابع ساب‌لینک
-SOURCES = [
-    "https://sub.shadowproxy66.workers.dev/sub/fed93ccf-b024-4494-98e5-1d2d2325d872",
-    "https://sub.shadowproxy66.workers.dev/sub/be80a76c-6044-417c-9bff-e587f9380d05",
-    "https://sub.shadowproxy66.workers.dev/sub/99066519-727d-44d0-b65a-6034f21bf3a2"
-]
+def log(msg, t="info"):
+    if t == "success":
+        print(f"{GREEN}✅ {msg}{RESET}")
+    elif t == "error":
+        print(f"{RED}❌ {msg}{RESET}")
+    elif t == "wait":
+        print(f"{YELLOW}⏳ {msg}{RESET}")
+    elif t == "info":
+        print(f"{BLUE}📡 {msg}{RESET}")
+    elif t == "channel":
+        print(f"{CYAN}🏷️ {msg}{RESET}")
 
-# تابع لاگ رنگی
-def log(message, type="info"):
-    if type == "success":
-        print(f"{GREEN}[✓] {message}{RESET}")
-    elif type == "error":
-        print(f"{RED}[✗] {message}{RESET}")
-    elif type == "wait":
-        print(f"{YELLOW}[~] {message}{RESET}")
-    else:
-        print(f"[i] {message}")
-
-# تابع دریافت و دیکد کانفیگ‌ها از یک ساب‌لینک
-def fetch_configs(url):
+def fetch_source(url, retry=0):
     try:
-        log(f"دریافت از: {url}", "wait")
-        response = requests.get(url, timeout=30)
-        
-        if response.status_code != 200:
-            log(f"خطا در دریافت {url} - کد {response.status_code}", "error")
-            return []
-        
-        content = response.text.strip()
-        
-        # بررسی اگر base64 باشه
+        log(f"دریافت از منبع...", "wait")
+        r = requests.get(url, timeout=TIMEOUT)
+        if r.status_code != 200:
+            raise Exception(f"HTTP {r.status_code}")
         try:
-            decoded = base64.b64decode(content).decode('utf-8')
+            decoded = base64.b64decode(r.text).decode('utf-8')
             configs = decoded.splitlines()
         except:
-            # اگر base64 نباشه مستقیم خطوط
-            configs = content.splitlines()
-        
-        log(f"دریافت {len(configs)} کانفیگ از این منبع", "success")
+            configs = r.text.splitlines()
+        configs = [c.strip() for c in configs if c.strip() and len(c) > 20]
+        log(f"✅ دریافت {len(configs)} کانفیگ", "success")
         return configs
-        
     except Exception as e:
-        log(f"خطا در {url}: {str(e)}", "error")
+        if retry < MAX_RETRIES:
+            log(f"تلاش مجدد ({retry + 1}/{MAX_RETRIES})...", "wait")
+            time.sleep(2)
+            return fetch_source(url, retry + 1)
+        log(f"خطا: {str(e)}", "error")
         return []
 
-# تابع پاک کردن متن بعد از # و ایموجی‌ها
-def clean_config(line):
-    # حذف هر چیزی که بعد از # اومده (شامل # خودش)
-    line = re.sub(r'#.*$', '', line)
-    # حذف ایموجی‌ها (اختیاری - اگه خواستی پاک بشن)
-    # ایموجی‌ها معمولاً در UTF-8 باقی می‌مونن، ولی خط بالا # رو حذف می‌کنه
-    return line.strip()
+def clean_config(c):
+    """حذف تگ‌های قدیمی"""
+    return re.sub(r'#.*$', '', c).strip()
 
-# تابع اصلی
-def main():
-    log("شروع به روزرسانی ساب‌لینک", "wait")
-    
-    all_configs = []
-    
-    # مرحله 1: دریافت از همه منابع
-    for url in SOURCES:
-        configs = fetch_configs(url)
-        if configs:
-            all_configs.extend(configs)
-    
-    if not all_configs:
-        log("هیچ کانفیگی دریافت نشد!", "error")
-        return
-    
-    log(f"مجموع کانفیگ‌های خام: {len(all_configs)}", "success")
-    
-    # مرحله 2: تمیز کردن کانفیگ‌ها (حذف # و بعدش)
-    cleaned = []
-    for conf in all_configs:
-        conf = clean_config(conf)
-        if conf and len(conf) > 10:  # فیلتر خطوط خالی یا خیلی کوتاه
-            cleaned.append(conf)
-    
-    log(f"بعد از پاکسازی: {len(cleaned)} کانفیگ", "success")
-    
-    # مرحله 3: انتخاب 600 تا رندوم
-    if len(cleaned) > 600:
-        selected = random.sample(cleaned, 600)
-    else:
-        selected = cleaned[:]
-        log(f"تعداد کانفیگ کمتر از 600 بود، همه {len(selected)} تا استفاده شد", "wait")
-    
-    # مرحله 4: اضافه کردن تگ با شماره منظم
-    final_configs = []
-    for idx, conf in enumerate(selected, start=1):
-        # اضافه کردن #🔥 Channel : @nitruStore به همراه شماره
-        tag = f"#🔥{idx} Channel : @nitruStore"
-        final_configs.append(f"{conf}{tag}")
-    
-    # مرحله 5: اضافه کردن کانفیگ مخصوص زمان آخرین آپدیت (همیشه در خط اول)
+def rename_config(c, idx):
+    """تغییر نام به فرمت: کانفیگ#شماره Channel : @nitruStore"""
+    clean = clean_config(c)
+    return f"{clean}#{idx} {FINAL_TAG}"
+
+def create_info_config(total_configs):
+    """ساخت کانفیگ اطلاعات با فرمت NITRU"""
     now = datetime.now()
     time_str = now.strftime("%Y-%m-%d %H:%M:%S")
     
-    # یک کانفیگ کامنت‌گونه که در کلاینت‌ها نمایش داده بشه
-    update_config = f"vmess://#{time_str}?remarks=LastUpdate-{time_str}"
-    # یا بهتر: یک لینک بی اثر که فقط توضیح بده
-    update_remark = f"# Last Update: {time_str} - کانفیگ‌ها تازه‌ان"
+    # محاسبه دقیقه از آخرین آپدیت
+    minute_of_day = now.hour * 60 + now.minute
     
-    # قرار دادن در صدر
-    final_configs.insert(0, update_remark)
-    final_configs.insert(0, update_config)
+    info_config = {
+        "v": "2",
+        "ps": f"📊 NITRU | Last Update: {time_str} | Total: {total_configs} Configs | {CHANNEL_TAG}",
+        "add": "185.159.157.229",
+        "port": "443",
+        "id": "nitru-info-display",
+        "aid": "0",
+        "scy": "auto",
+        "net": "ws",
+        "type": "none",
+        "host": "info.nitru.ir",
+        "path": "/info",
+        "tls": "tls"
+    }
     
-    # مرحله 6: ذخیره در فایل sub.txt
-    with open("sub.txt", "w", encoding="utf-8") as f:
-        for conf in final_configs:
-            f.write(conf + "\n")
+    vmess_json = json.dumps(info_config)
+    vmess_b64 = base64.b64encode(vmess_json.encode()).decode()
+    return f"vmess://{vmess_b64}"
+
+def main():
+    start_time = datetime.now()
     
-    log(f"✅ فایل sub.txt با {len(final_configs)} خط ذخیره شد", "success")
-    log(f"آخرین بروزرسانی: {time_str}", "success")
+    log("=" * 50, "info")
+    log("🚀 شروع بروزرسانی NITRU Sub Link", "info")
+    log(f"🏷️ کانال: {CHANNEL_TAG}", "channel")
+    log(f"📊 تعداد هدف: {TOTAL_CONFIGS} کانفیگ", "info")
+    log("=" * 50, "info")
+    
+    log(f"تعداد منابع: {len(SOURCES)}", "info")
+    
+    source_stats = []
+    all_configs = []
+    
+    for i, url in enumerate(SOURCES, 1):
+        log(f"\n📡 منبع {i}:", "info")
+        configs = fetch_source(url)
+        source_stats.append(f"📡 منبع {i}: {len(configs)} کانفیگ")
+        all_configs.extend(configs)
+    
+    if not all_configs:
+        log("❌ هیچ کانفیگی دریافت نشد!", "error")
+        send_telegram_message("❌ <b>خطا در بروزرسانی NITRU</b>\n\nهیچ کانفیگی از منابع دریافت نشد!")
+        return False
+    
+    log(f"\n📊 مجموع کانفیگ‌های خام: {len(all_configs)}", "success")
+    
+    # حذف تکراری
+    unique = []
+    seen = set()
+    for c in all_configs:
+        key = re.sub(r'#.*$', '', c)
+        if key not in seen:
+            seen.add(key)
+            unique.append(c)
+    
+    log(f"📊 بعد از حذف تکراری: {len(unique)} کانفیگ", "success")
+    
+    # انتخاب تصادفی
+    if len(unique) > TOTAL_CONFIGS:
+        selected = random.sample(unique, TOTAL_CONFIGS)
+        log(f"🎲 انتخاب {TOTAL_CONFIGS} کانفیگ به صورت تصادفی", "success")
+    else:
+        selected = unique
+        log(f"📊 تعداد کمتر از {TOTAL_CONFIGS}، همه {len(selected)} تا استفاده شد", "wait")
+    
+    # تغییر نام به فرمت NITRU
+    log(f"\n🏷️ در حال تغییر نام کانفیگ‌ها به فرمت NITRU...", "wait")
+    renamed = []
+    for i, c in enumerate(selected, 1):
+        new_name = rename_config(c, i)
+        renamed.append(new_name)
+    
+    log(f"✅ نام {len(renamed)} کانفیگ با موفقیت تغییر کرد", "success")
+    
+    # کانفیگ اطلاعات
+    info_config = create_info_config(len(renamed))
+    final = [info_config] + renamed
+    
+    # ذخیره در فایل
+    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+        f.write("\n".join(final))
+    
+    end_time = datetime.now()
+    duration = (end_time - start_time).total_seconds()
+    
+    log("\n" + "=" * 50, "success")
+    log("✅ عملیات با موفقیت انجام شد!", "success")
+    log(f"📁 فایل {OUTPUT_FILE} ذخیره شد", "success")
+    log(f"📊 آمار نهایی:", "info")
+    log(f"   • کانفیگ اطلاعات: 1 عدد", "info")
+    log(f"   • کانفیگ NITRU: {len(renamed)} عدد", "info")
+    log(f"   • مجموع کل: {len(final)} عدد", "info")
+    log(f"⏱️ زمان اجرا: {duration:.2f} ثانیه", "info")
+    log("=" * 50, "success")
+    
+    # نمونه از خروجی
+    if len(final) > 1:
+        log(f"\n📝 نمونه از کانفیگ نهایی:", "info")
+        sample = final[1][:100] + "..." if len(final[1]) > 100 else final[1]
+        log(f"   {sample}", "info")
+    
+    # ارسال به تلگرام
+    tg_message = f"""
+<b>🛡️ NITRU Sub Link - گزارش بروزرسانی</b>
+
+⏰ <b>زمان:</b> {end_time.strftime('%Y-%m-%d %H:%M:%S')}
+⚡ <b>مدت اجرا:</b> {duration:.2f} ثانیه
+🏷️ <b>کانال:</b> {CHANNEL_TAG}
+
+<b>📥 دریافت از منابع:</b>
+{chr(10).join(source_stats)}
+
+<b>📊 آمار نهایی:</b>
+• کانفیگ خام: {len(all_configs)}
+• بعد از حذف تکراری: {len(unique)}
+• کانفیگ نهایی NITRU: {len(renamed)}
+• کانفیگ اطلاعات: 1
+
+<b>📁 لینک ساب‌لینک:</b>
+<code>https://raw.githubusercontent.com/{os.environ.get('GITHUB_REPOSITORY', 'USER/NITRU-Sub')}/main/sub.txt</code>
+
+✅ <b>وضعیت:</b> موفق | <b>کانال:</b> {CHANNEL_TAG}
+    """
+    
+    send_telegram_message(tg_message)
+    send_file_to_telegram(OUTPUT_FILE, f"📁 NITRU Sub - {end_time.strftime('%Y-%m-%d %H:%M:%S')} | {CHANNEL_TAG}")
+    
+    return True
 
 if __name__ == "__main__":
-    main()
+    exit(0 if main() else 1)
