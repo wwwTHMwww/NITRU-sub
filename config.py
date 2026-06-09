@@ -2,10 +2,10 @@
 
 # لینک‌های منبع (ساب‌لینک‌های ShadowProxy66)
 SOURCES = [
-    "https://sub.shadowproxy66.workers.dev/sub/be80a76c-6044-417c-9bff-e587f9380d05",
-    "https://sub.shadowproxy66.workers.dev/sub/214abfe9-791e-44ba-bd8e-0afe298119f6",
-    "https://sub.shadowproxy66.workers.dev/sub/99066519-727d-44d0-b65a-6034f21bf3a2",
-    "https://sub.shadowproxy66.workers.dev/sub/b2bc17e9-fd87-44ef-84b2-394d9763d6a6",
+    "https://sub.shadowproxy66.workers.dev/sub/be80a76c-6044-417c-9bff-e587f9380d05#ShadowProxy66(1)",
+    "https://sub.shadowproxy66.workers.dev/sub/99066519-727d-44d0-b65a-6034f21bf3a2#ShadowProxy66(2)",
+    "https://sub.shadowproxy66.workers.dev/sub/7429c429-a848-4ef6-8508-4b23fd0472de#ShadowProxy66(3)",
+    "https://sub.shadowproxy66.workers.dev/sub/104ea085-c4e8-498a-9988-f2d6acf2e070#ShadowProxy66(4)",
 ]
 
 # ==================== تنظیمات نام‌گذاری ====================
