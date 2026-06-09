@@ -1,13 +1,12 @@
-name: NITRU Bot
+name: NITRU Bot (Polling Mode)
 
 on:
-  push:
-    paths:
-      - 'bot_manager.py'
+  schedule:
+    - cron: '*/5 * * * *'
   workflow_dispatch:
 
 jobs:
-  deploy:
+  run-bot:
     runs-on: ubuntu-latest
     
     steps:
@@ -17,13 +16,15 @@ jobs:
         with:
           python-version: '3.10'
       
-      - run: pip install -r bot_requirements.txt
-      
-      - name: Run Bot
+      - name: Install dependencies
         run: |
-          nohup python bot_manager.py &
+          pip install requests
+      
+      - name: Run Telegram Bot
+        run: python bot.py
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
+        timeout-minutes: 4
